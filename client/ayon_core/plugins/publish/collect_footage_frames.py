@@ -103,6 +103,8 @@ class CollectMMFootage(
         )
         trimmed_duration = trimmed_media_range_h.duration.value
 
+        instance.data["otioTrimmingRange"] = trimmed_media_range_h
+
         self.log.debug(f"trimmed_media_range_h: {trimmed_media_range_h}")
         self.log.debug(f"a_frame_start_h: {a_frame_start_h}, a_frame_end_h: {a_frame_end_h}")
 
