@@ -39,6 +39,7 @@ from ayon_core.tools.console_interpreter.ui import ConsoleInterpreterWindow
 from ayon_core.tools.publisher.publish_report_viewer import (
     PublishReportViewerWindow,
 )
+from ayon_rank.studio.create_shots import ShotsCreatorUI, ShotsCreatorLogic
 
 from .addons_manager import TrayAddonsManager
 from .host_console_listener import HostListener
@@ -47,6 +48,11 @@ from .dialogs import (
     UpdateDialog,
 )
 
+
+def is_create_shots_allowed():
+    from ayon_rank.api.rank import get_studio_config
+    allowed_users = get_studio_config("allowed_users_create_shots") or []
+    return ayon_api.get_user()["name"] in allowed_users
 
 class TrayManager:
     """Cares about context of application.
@@ -93,6 +99,7 @@ class TrayManager:
         self._browser_window = None
         self._console_window = ConsoleInterpreterWindow()
         self._publish_report_viewer_window = PublishReportViewerWindow()
+        self._shots_creator_window = ShotsCreatorUI(ShotsCreatorLogic())
 
         self._update_check_timer = update_check_timer
         self._update_check_interval = update_check_interval
@@ -196,6 +203,17 @@ class TrayManager:
 
         admin_submenu = ITrayAddon.admin_submenu(tray_menu)
         tray_menu.addMenu(admin_submenu)
+
+        if is_create_shots_allowed():
+            rank_menu = QtWidgets.QMenu("Rank", tray_menu)
+            create_shots_action = QtWidgets.QAction(
+                "Create Shots", rank_menu
+            )
+            create_shots_action.triggered.connect(
+                self._show_shots_creator_window
+            )
+            rank_menu.addAction(create_shots_action)
+            tray_menu.addMenu(rank_menu)
 
         # Add services if they are
         services_submenu = ITrayService.services_submenu(tray_menu)
@@ -591,6 +609,11 @@ class TrayManager:
         self._publish_report_viewer_window.show()
         self._publish_report_viewer_window.raise_()
         self._publish_report_viewer_window.activateWindow()
+
+    def _show_shots_creator_window(self):
+        self._shots_creator_window.show()
+        self._shots_creator_window.raise_()
+        self._shots_creator_window.activateWindow()
 
 
 class SystemTrayIcon(QtWidgets.QSystemTrayIcon):
