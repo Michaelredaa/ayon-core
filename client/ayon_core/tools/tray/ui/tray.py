@@ -50,8 +50,8 @@ from .dialogs import (
 
 
 def is_create_shots_allowed():
-    from ayon_rank.api.rank import get_studio_config
-    allowed_users = get_studio_config("allowed_users_create_shots") or []
+    rank_settings = get_studio_settings().get("rank", {})
+    allowed_users = rank_settings.get("allowed_users_create_shots", [])
     return ayon_api.get_user()["name"] in allowed_users
 
 class TrayManager:
