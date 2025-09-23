@@ -99,7 +99,7 @@ class TrayManager:
         self._browser_window = None
         self._console_window = ConsoleInterpreterWindow()
         self._publish_report_viewer_window = PublishReportViewerWindow()
-        self._shots_creator_window = ShotsCreatorUI(ShotsCreatorLogic())
+        self._shots_creator_window = None
 
         self._update_check_timer = update_check_timer
         self._update_check_interval = update_check_interval
@@ -611,6 +611,7 @@ class TrayManager:
         self._publish_report_viewer_window.activateWindow()
 
     def _show_shots_creator_window(self):
+        self._shots_creator_window = ShotsCreatorUI(ShotsCreatorLogic())
         self._shots_creator_window.show()
         self._shots_creator_window.raise_()
         self._shots_creator_window.activateWindow()
