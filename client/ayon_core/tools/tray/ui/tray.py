@@ -39,6 +39,7 @@ from ayon_core.tools.console_interpreter.ui import ConsoleInterpreterWindow
 from ayon_core.tools.publisher.publish_report_viewer import (
     PublishReportViewerWindow,
 )
+from ayon_rank.studio.create_shots import ShotsCreatorUI, ShotsCreatorLogic
 
 from .addons_manager import TrayAddonsManager
 from .host_console_listener import HostListener
@@ -47,6 +48,11 @@ from .dialogs import (
     UpdateDialog,
 )
 
+
+def is_create_shots_allowed():
+    rank_settings = get_studio_settings().get("rank", {})
+    allowed_users = rank_settings.get("create_shots", {}).get("allowed_users_create_shots", [])
+    return ayon_api.get_user()["name"] in allowed_users
 
 class TrayManager:
     """Cares about context of application.
@@ -93,6 +99,7 @@ class TrayManager:
         self._browser_window = None
         self._console_window = ConsoleInterpreterWindow()
         self._publish_report_viewer_window = PublishReportViewerWindow()
+        self._shots_creator_window = None
 
         self._update_check_timer = update_check_timer
         self._update_check_interval = update_check_interval
@@ -197,6 +204,17 @@ class TrayManager:
         admin_submenu = ITrayAddon.admin_submenu(tray_menu)
         tray_menu.addMenu(admin_submenu)
 
+        if is_create_shots_allowed():
+            rank_menu = QtWidgets.QMenu("Rank", tray_menu)
+            create_shots_action = QtWidgets.QAction(
+                "Create Shots", rank_menu
+            )
+            create_shots_action.triggered.connect(
+                self._show_shots_creator_window
+            )
+            rank_menu.addAction(create_shots_action)
+            tray_menu.addMenu(rank_menu)
+
         # Add services if they are
         services_submenu = ITrayService.services_submenu(tray_menu)
         self._services_submenu = services_submenu
@@ -240,16 +258,6 @@ class TrayManager:
             self.log.warning("Other tray started meanwhile. Exiting.")
             self.exit()
 
-        project_bundle = os.getenv("AYON_BUNDLE_NAME")
-        studio_bundle = os.getenv("AYON_STUDIO_BUNDLE_NAME")
-        if studio_bundle and project_bundle != studio_bundle:
-            self.log.info(
-                f"Project bundle '{project_bundle}' is defined, but tray"
-                " cannot be running in project scope. Restarting tray to use"
-                " studio bundle."
-            )
-            self.restart()
-
     def get_services_submenu(self):
         return self._services_submenu
 
@@ -280,18 +288,11 @@ class TrayManager:
         elif is_staging_enabled():
             additional_args.append("--use-staging")
 
-        if "--project" in additional_args:
-            idx = additional_args.index("--project")
-            additional_args.pop(idx)
-            additional_args.pop(idx)
-
         args.extend(additional_args)
 
         envs = dict(os.environ.items())
         for key in {
             "AYON_BUNDLE_NAME",
-            "AYON_STUDIO_BUNDLE_NAME",
-            "AYON_PROJECT_NAME",
         }:
             envs.pop(key, None)
 
@@ -346,7 +347,6 @@ class TrayManager:
         return json_response({
             "username": self._cached_username,
             "bundle": os.getenv("AYON_BUNDLE_NAME"),
-            "studio_bundle": os.getenv("AYON_STUDIO_BUNDLE_NAME"),
             "dev_mode": is_dev_mode_enabled(),
             "staging_mode": is_staging_enabled(),
             "addons": {
@@ -534,8 +534,6 @@ class TrayManager:
                 "AYON_SERVER_URL",
                 "AYON_API_KEY",
                 "AYON_BUNDLE_NAME",
-                "AYON_STUDIO_BUNDLE_NAME",
-                "AYON_PROJECT_NAME",
             }:
                 os.environ.pop(key, None)
             self.restart()
@@ -569,8 +567,6 @@ class TrayManager:
         envs = dict(os.environ.items())
         for key in {
             "AYON_BUNDLE_NAME",
-            "AYON_STUDIO_BUNDLE_NAME",
-            "AYON_PROJECT_NAME",
         }:
             envs.pop(key, None)
 
@@ -613,6 +609,12 @@ class TrayManager:
         self._publish_report_viewer_window.show()
         self._publish_report_viewer_window.raise_()
         self._publish_report_viewer_window.activateWindow()
+
+    def _show_shots_creator_window(self):
+        self._shots_creator_window = ShotsCreatorUI(ShotsCreatorLogic())
+        self._shots_creator_window.show()
+        self._shots_creator_window.raise_()
+        self._shots_creator_window.activateWindow()
 
 
 class SystemTrayIcon(QtWidgets.QSystemTrayIcon):
