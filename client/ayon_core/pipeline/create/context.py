@@ -15,6 +15,7 @@ from typing import (
     Any,
     Callable,
 )
+from warnings import warn
 
 import pyblish.logic
 import pyblish.api
@@ -752,13 +753,13 @@ class CreateContext:
         manual_creators = {}
         report = discover_creator_plugins(return_report=True)
         self.creator_discover_result = report
-        for creator_class in report.plugins:
-            if inspect.isabstract(creator_class):
-                self.log.debug(
-                    "Skipping abstract Creator {}".format(str(creator_class))
-                )
-                continue
+        for creator_class in report.abstract_plugins:
+            self.log.debug(
+                "Skipping abstract Creator '%s'",
+                str(creator_class)
+            )
 
+        for creator_class in report.plugins:
             creator_identifier = creator_class.identifier
             if creator_identifier in creators:
                 self.log.warning(
@@ -772,25 +773,36 @@ class CreateContext:
                 creator_class.host_name
                 and creator_class.host_name != self.host_name
             ):
-                self.log.info((
-                    "Creator's host name \"{}\""
-                    " is not supported for current host \"{}\""
-                ).format(creator_class.host_name, self.host_name))
+                self.log.info(
+                    (
+                        'Creator\'s host name "{}"'
+                        ' is not supported for current host "{}"'
+                    ).format(creator_class.host_name, self.host_name)
+                )
                 continue
 
             # TODO report initialization error
             try:
-                creator = creator_class(
-                    project_settings,
-                    self,
-                    self.headless
-                )
+                creator = creator_class(project_settings, self, self.headless)
             except Exception:
                 self.log.error(
                     f"Failed to initialize plugin: {creator_class}",
                     exc_info=True
                 )
                 continue
+
+            if not creator.product_base_type:
+                message = (
+                    f"Provided creator {creator!r} doesn't have "
+                    "product base type attribute defined. This will be "
+                    "required in future."
+                )
+                warn(
+                    message,
+                    DeprecationWarning,
+                    stacklevel=2
+                )
+                self.log.warning(message)
 
             if not creator.enabled:
                 disabled_creators[creator_identifier] = creator
@@ -1207,6 +1219,7 @@ class CreateContext:
         task_entity: Optional[dict[str, Any]] = None,
         pre_create_data: Optional[dict[str, Any]] = None,
         active: Optional[bool] = None,
+        product_type: Optional[str] = None,
     ) -> Any:
         """Trigger create of plugins with standartized arguments.
 
@@ -1226,6 +1239,7 @@ class CreateContext:
             pre_create_data (dict[str, Any]): Pre-create attribute values.
             active (Optional[bool]): Whether the created instance defaults
                 to be active or not.
+            product_type (str): Specific product type to use.
 
         Returns:
             Any: Output of triggered creator's 'create' method.
@@ -1254,6 +1268,9 @@ class CreateContext:
                     project_name, folder_entity["id"], current_task_name
                 )
 
+        if not product_type:
+            product_type = creator.product_base_type
+
         if pre_create_data is None:
             pre_create_data = {}
 
@@ -1276,7 +1293,18 @@ class CreateContext:
             variant,
             self.host_name,
         )
-        kwargs = {"project_entity": project_entity}
+        kwargs = {
+            # Backwards compatibility for 'project_entity' argument (24/07/08)
+            "project_entity": project_entity,
+            # Backwards compatibility for 'product_type' argument (25/01/19)
+            "product_type": product_type,
+        }
+        for kwarg in ("product_type", "project_entity"):
+            if not is_func_signature_supported(
+                creator.get_product_name, *args, **kwargs
+            ):
+                kwargs.pop(kwarg)
+
         # Backwards compatibility for 'project_entity' argument
         # - 'get_product_name' signature changed 24/07/08
         if not is_func_signature_supported(
@@ -1288,9 +1316,13 @@ class CreateContext:
         instance_data = {
             "folderPath": folder_entity["path"],
             "task": task_entity["name"] if task_entity else None,
-            "productType": creator.product_type,
+            "productType": product_type,
+            # Add product base type if supported. Fallback to product type
+            "productBaseType": (
+                creator.product_base_type or creator.product_type),
             "variant": variant
         }
+
         if active is not None:
             if not isinstance(active, bool):
                 self.log.warning(
